@@ -26,6 +26,7 @@ class SQLAlchemyMiddleware:
         try:
             await self.app(scope, receive, send)
         except Exception as exception:
+            await session.rollback()
             raise exception
         finally:
             await session.remove()

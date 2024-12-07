@@ -13,12 +13,14 @@ class ServerException(Exception):
     :param code: HTTP статус код, возвращаемый в респонсе
     :param error_code: код самой ошибки. Нужен для более
     гибкого логирования и сбора метрик в будущем.
-    :param message: сообщение ошибки
     """
 
     code: status.HTTP_400_BAD_REQUEST = status.HTTP_400_BAD_REQUEST
     error_code: status.HTTP_400_BAD_REQUEST = status.HTTP_400_BAD_REQUEST
-    message: str = "Произошла непредвиденная ошибка во время работы приложения"
+
+    @property
+    def message(self):
+        return "Произошла непредвиденная ошибка во время работы приложения"
 
 
 @dataclass
@@ -37,3 +39,9 @@ class ForbiddenException(ServerException):
 class UnauthorizedException(ServerException):
     code: status.HTTP_401_UNAUTHORIZED = status.HTTP_401_UNAUTHORIZED
     error_code: status.HTTP_401_UNAUTHORIZED = status.HTTP_401_UNAUTHORIZED
+
+
+@dataclass
+class InstanceAlreadyExistException(ServerException):
+    code: status.HTTP_409_CONFLICT = status.HTTP_409_CONFLICT
+    error_code = status.HTTP_409_CONFLICT = status.HTTP_409_CONFLICT

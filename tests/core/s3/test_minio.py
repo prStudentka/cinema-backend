@@ -2,13 +2,15 @@ import os
 
 
 class TestMinio:
-    def test_upload_file(self, minio_client, fake_file, faker, minio_cleanup):
+    async def test_upload_file(
+        self, minio_client, fake_file, faker, minio_cleanup
+    ):
         file_name = faker.file_name()
         minio_client.upload_file(file_path=fake_file, object_name=file_name)
         response = minio_client.get_object(object_name=file_name)
         assert response.status == 200
 
-    def test_download_file(
+    async def test_download_file(
         self, minio_client, fake_file, faker, minio_cleanup, tmp_path
     ):
         file_name = faker.file_name()
@@ -25,7 +27,9 @@ class TestMinio:
 
         os.remove(download_path)
 
-    def test_delete_file(self, minio_client, fake_file, faker, minio_cleanup):
+    async def test_delete_file(
+        self, minio_client, fake_file, faker, minio_cleanup
+    ):
         file_name = faker.file_name()
         minio_client.upload_file(file_path=fake_file, object_name=file_name)
         response = minio_client.delete_file(file_name)

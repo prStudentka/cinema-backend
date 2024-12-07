@@ -1,13 +1,20 @@
 import asyncio
+from collections.abc import Generator
+from typing import Any
+from uuid import uuid4
 
 import pytest
-import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from fastapi import FastAPI
+from httpx import AsyncClient
 
 from core.config import config
-from core.database import transactional
-from core.database.session import Base
+from core.database.session import (
+    Base,
+    engines,
+    reset_session_context,
+    set_session_context,
+)
+from core.server import create_app
 
 from .fixtures import *  # noqa: F403, I001
 
@@ -19,20 +26,30 @@ def event_loop(request):
     loop.close()
 
 
-@pytest_asyncio.fixture(scope="function")
-async def db_session() -> AsyncSession:
-    async_engine = create_async_engine(config.TEST_DATABASE_URL)
-    session = sessionmaker(
-        async_engine, class_=AsyncSession, expire_on_commit=False
-    )
+@pytest.fixture(scope="function", autouse=True)  # noqa: PT003
+def session_context():
+    session_id = str(uuid4())
+    context = set_session_context(session_id=session_id)
+    yield
+    reset_session_context(context=context)
 
-    async with session() as s:
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        transactional.session = s
-        yield s
 
-    async with async_engine.begin() as conn:
+@pytest.fixture
+async def prepare_database():
+    assert config.MODE == "TEST"
+
+    async with engines["writer"].begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
 
-    await async_engine.dispose()
+
+@pytest.fixture(scope="function")  # noqa: PT003
+def app() -> Generator[FastAPI, Any, None]:
+    app = create_app()
+    yield app  # noqa:  PT022
+
+
+@pytest.fixture(scope="function")  # noqa: PT003
+async def client(app: FastAPI):
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        yield ac

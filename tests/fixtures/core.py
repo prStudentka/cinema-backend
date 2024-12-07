@@ -4,6 +4,7 @@ import tempfile
 import pytest
 from faker import Faker
 
+from core.containers import get_container
 from core.storages.s3 import MinioS3Storage
 
 
@@ -32,3 +33,8 @@ def fake_file():
 @pytest.fixture(scope="session")
 def faker():
     return Faker(locale="ru_RU")
+
+
+@pytest.fixture(scope="session")
+def container():
+    return get_container()

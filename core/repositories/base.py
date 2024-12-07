@@ -2,12 +2,12 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import reduce
-from typing import Any
+from typing import Any, Generic
 
 from sqlalchemy import Select, func
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import select
 
+from core.database import get_session
 from core.generics import ModelType
 
 
@@ -17,10 +17,23 @@ class BaseRepository(ABC):
     async def create(self, attributes: dict[str, Any] = None): ...
 
     @abstractmethod
-    async def get_all(self, skip: int = 0, limit: int = 100): ...
+    async def get_all(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        join_: set[str] | None = None,
+        order_: dict | None = None,
+    ): ...
 
     @abstractmethod
-    async def get_by(self, field: str, value: Any): ...
+    async def get_by(
+        self,
+        field: str,
+        value: Any,
+        join_: set[str] | None = None,
+        unique: bool = False,
+        order_: dict | None = None,
+    ): ...
 
     @abstractmethod
     async def delete(self, instance: Any) -> None: ...
@@ -28,11 +41,10 @@ class BaseRepository(ABC):
 
 # ToDO: добавить filter_by и update методы
 @dataclass
-class BaseOrmRepository(BaseRepository):
+class BaseORMRepository(BaseRepository, Generic[ModelType]):
     """Базовый класс для репозиториев данных"""
 
-    session: AsyncSession
-    model_class: type[ModelType]
+    model_class: ModelType
 
     async def create(self, attributes: dict[str, Any] = None) -> ModelType:
         """
@@ -44,11 +56,18 @@ class BaseOrmRepository(BaseRepository):
         if attributes is None:
             attributes = {}
         model = self.model_class(**attributes)
-        self.session.add(model)
-        return model
+        async with get_session() as session:
+            session.add(model)
+            await session.commit()
+            await session.refresh(model)
+            return model
 
     async def get_all(
-        self, skip: int = 0, limit: int = 100, join_: set[str] | None = None
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        join_: set[str] | None = None,
+        order_: dict | None = None,
     ) -> Iterable[ModelType]:
         """
         Метод для получения всех инстансов модели.
@@ -72,6 +91,7 @@ class BaseOrmRepository(BaseRepository):
         value: Any,
         join_: set[str] | None = None,
         unique: bool = False,
+        order_: dict | None = None,
     ) -> Iterable[ModelType] | ModelType:
         """
         Метод возвращает инстансы модели, отфильтрованные
@@ -100,7 +120,8 @@ class BaseOrmRepository(BaseRepository):
         :param instance: инстанс для удаления
         :return: None
         """
-        await self.session.delete(instance)
+        async with get_session() as session:
+            await session.delete(instance)
 
     def _query(
         self,
@@ -126,8 +147,9 @@ class BaseOrmRepository(BaseRepository):
         :param query: запрос к бд.
         :return: список инстансов.
         """
-        query = await self.session.scalars(query)
-        return query.all()
+        async with get_session() as session:
+            query = await session.scalars(query)
+            return query.all()
 
     async def _all_unique(self, query: Select) -> Iterable[ModelType]:
         """
@@ -136,8 +158,9 @@ class BaseOrmRepository(BaseRepository):
         :param query: запрос к бд.
         :return: список инстансов.
         """
-        result = await self.session.execute(query)
-        return result.unique().scalars().all()
+        async with get_session() as session:
+            result = await session.execute(query)
+            return result.unique().scalars().all()
 
     async def _first(self, query: Select) -> ModelType | None:
         """
@@ -146,8 +169,9 @@ class BaseOrmRepository(BaseRepository):
         :param query: запрос к бд.
         :return: инстанс модели.
         """
-        query = await self.session.scalars(query)
-        return query.first()
+        async with get_session() as session:
+            query = await session.scalars(query)
+            return query.first()
 
     async def _one_or_none(self, query: Select) -> ModelType | None:
         """
@@ -156,8 +180,9 @@ class BaseOrmRepository(BaseRepository):
         :param query: запрос к бд
         :return: инстанс или None
         """
-        query = await self.session.scalars(query)
-        return query.one_or_none()
+        async with get_session() as session:
+            query = await session.scalars(query)
+            return query.one_or_none()
 
     async def _one(self, query: Select) -> ModelType:
         """
@@ -167,8 +192,9 @@ class BaseOrmRepository(BaseRepository):
         :param query: запрос к бд.
         :return: инстанс модели
         """
-        query = await self.session.scalars(query)
-        return query.one()
+        async with get_session() as session:
+            query = await session.scalars(query)
+            return query.one()
 
     async def _count(self, query: Select) -> int:
         """
@@ -177,11 +203,12 @@ class BaseOrmRepository(BaseRepository):
         :param query: запрос к бд
         :return: кол-во инстансов
         """
-        query = query.subquery()
-        query = await self.session.scalars(
-            select(func.count()).select_from(query)
-        )
-        return query.one()
+        async with get_session() as session:
+            query = query.subquery()
+            query = await session.scalars(
+                select(func.count()).select_from(query)
+            )
+            return query.one()
 
     async def _sort_by(
         self,
